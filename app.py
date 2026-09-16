@@ -165,7 +165,13 @@ def main():
             st.error("Der Benutzername muss mindestens 3 Zeichen lang sein.")
           else:
             speichere_benutzer(neu_user, neu_pw)
-            st.success("Konto erfolgreich erstellt! Du kannst dich jetzt unter 'Einloggen' anmelden.")
+            
+            # --- HIER IST DIE ÄNDERUNG: Automatischer Login nach Registrierung ---
+            st.session_state.logged_in = True
+            st.session_state.username = neu_user
+            st.session_state.erfolgs_meldung = "Konto erfolgreich erstellt und automatisch eingeloggt! Willkommen!"
+            st.rerun()
+            # ---------------------------------------------------------------------
             
     return
   # --- ENDE LOGIN LOGIK ---
@@ -197,7 +203,6 @@ def main():
 
   gold_g, silber_g = hole_live_kurse()
   
-  # NEU: Daten aus der Datenbank laden anstatt aus der CSV
   aktive_items = lade_aktive(username)
   verkaufte_items = lade_verkaufte(username)
 
@@ -242,7 +247,6 @@ def main():
         item_zu_verkaufen = aktive_items[k_idx]
 
         if st.button("💵 Als verkauft buchen", type="primary", use_container_width=True):
-          # 1. In die Verkäufe-Tabelle eintragen
           supabase.table("verkaeufe").insert({
               "username": username, "name": item_zu_verkaufen.name, "typ": item_zu_verkaufen.typ,
               "gewicht_gramm": item_zu_verkaufen.gewicht_gramm, "kaufdatum": item_zu_verkaufen.datum,
@@ -250,7 +254,6 @@ def main():
               "verkauf_datum": verkauf_datum_input
           }).execute()
           
-          # 2. Aus der aktiven Tabelle löschen (Anhand der echten Datenbank ID!)
           supabase.table("portfolio").delete().eq("id", item_zu_verkaufen.id).execute()
           
           st.session_state.erfolgs_meldung = "Erfolgreich als verkauft verbucht!"
@@ -358,7 +361,6 @@ def main():
         elif s_einheit == "kg":
             gewicht_in_g = s_gew * 1000.0
             
-        # Ab in die Supabase Datenbank!
         supabase.table("portfolio").insert({
             "username": username,
             "name": s_name,
