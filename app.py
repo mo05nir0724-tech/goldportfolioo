@@ -181,26 +181,45 @@ def main():
   aktiv_datei = f"sammlung_{username}.csv"
   verkauft_datei = f"verkauft_{username}.csv"
 
-  st.sidebar.write(f"Angemeldet als: **{username.capitalize()}**")
+  # ==========================================
+  # ⚙️ SETTINGS / SEITENLEISTE
+  # ==========================================
+  st.sidebar.header("⚙️ Einstellungen")
+  
+  st.sidebar.write("👤 **Konto:**")
+  st.sidebar.write(f"Angemeldet als: *{username.capitalize()}*")
   if st.sidebar.button("🚪 Ausloggen", use_container_width=True):
     st.session_state.logged_in = False
     st.session_state.username = ""
     st.rerun()
+    
+  st.sidebar.divider()
+  
+  st.sidebar.write("📜 **Ansicht:**")
+  # Dieser Schalter steuert, ob Schätzwerte angezeigt werden
+  protokoll_modus = st.sidebar.toggle("Nur Protokoll-Modus (Werte ausblenden)", value=False)
+  
+  st.sidebar.divider()
+  
+  st.sidebar.write("🎨 **Design (Dark/Light):**")
+  st.sidebar.caption("Tippe oben rechts auf die drei Punkte **(⋮) ➔ Settings ➔ Theme**, um das Design zu wechseln!")
+  # ==========================================
 
-  # Falls eine Erfolgsmeldung nach dem Speichern ansteht, anzeigen!
+  # Erfolgsmeldungen aus Session State abgreifen
   if "erfolgs_meldung" in st.session_state:
       st.success(st.session_state.erfolgs_meldung)
-      del st.session_state.erfolgs_meldung # Sofort wieder löschen, damit sie beim nächsten Mal weg ist
+      del st.session_state.erfolgs_meldung
 
   gold_g, silber_g = hole_live_kurse()
   aktive_items = lade_daten(aktiv_datei, ist_verkauf=False)
   verkaufte_items = lade_daten(verkauft_datei, ist_verkauf=True)
 
-  col1, col2 = st.columns(2)
-  col1.metric("Live-Goldpreis", f"{gold_g:,.2f} €/g".replace(".", ","))
-  col2.metric("Live-Silberpreis", f"{silber_g:,.2f} €/g".replace(".", ","))
-
-  st.divider()
+  # Live-Preise nur anzeigen, wenn NICHT im Protokoll-Modus
+  if not protokoll_modus:
+      col1, col2 = st.columns(2)
+      col1.metric("Live-Goldpreis", f"{gold_g:,.2f} €/g".replace(".", ","))
+      col2.metric("Live-Silberpreis", f"{silber_g:,.2f} €/g".replace(".", ","))
+      st.divider()
 
   tab_aktiv, tab_verkauft, tab_neu = st.tabs(
       ["📦 Aktiv", "💰 Verkauft", "➕ Neu"]
@@ -209,19 +228,22 @@ def main():
   # --- TAB 1: AKTIVES PORTFOLIO ---
   with tab_aktiv:
     gesamt_kauf = sum(i.kaufpreis for i in aktive_items)
-    gesamt_wert = sum(i.get_aktueller_wert(gold_g, silber_g) for i in aktive_items)
-    gesamt_bilanz = gesamt_wert - gesamt_kauf
+    
+    if not protokoll_modus:
+        gesamt_wert = sum(i.get_aktueller_wert(gold_g, silber_g) for i in aktive_items)
+        gesamt_bilanz = gesamt_wert - gesamt_kauf
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Kaufwert", f"{gesamt_kauf:,.0f} €".replace(".", ","))
+        c2.metric("Akt. Wert", f"{gesamt_wert:,.0f} €".replace(".", ","))
+        c3.metric(
+            "Bilanz", 
+            f"{gesamt_bilanz:,.0f} €".replace(".", ","),
+            delta=f"{(gesamt_bilanz/gesamt_kauf*100) if gesamt_kauf > 0 else 0:.1f} %"
+        )
+    else:
+        st.metric("Investierter Gesamtbetrag", f"{gesamt_kauf:,.0f} €".replace(".", ","))
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Kaufwert", f"{gesamt_kauf:,.0f} €".replace(".", ","))
-    c2.metric("Akt. Wert", f"{gesamt_wert:,.0f} €".replace(".", ","))
-    c3.metric(
-        "Bilanz", 
-        f"{gesamt_bilanz:,.0f} €".replace(".", ","),
-        delta=f"{(gesamt_bilanz/gesamt_kauf*100) if gesamt_kauf > 0 else 0:.1f} %"
-    )
-
-    st.subheader("Aktionen")
+    st.subheader("Bestand")
     if aktive_items:
       with st.expander("Eintrag verkaufen oder löschen", expanded=False):
         k_idx = st.selectbox(
@@ -231,7 +253,7 @@ def main():
         )
         col_p, col_d = st.columns(2)
         verkaufspreis_input = col_p.number_input("Verkaufspreis (€)", min_value=0.0, value=300.0)
-        verkauf_datum_input = col_d.text_input("Datum", "12.09.2026")
+        verkauf_datum_input = col_d.text_input("Verkaufs-Datum", "12.09.2026")
 
         if st.button("💵 Als verkauft buchen", type="primary", use_container_width=True):
           item_zu_verkaufen = aktive_items[k_idx]
@@ -245,30 +267,35 @@ def main():
           speichere_daten(aktiv_datei, aktive_items, ist_verkauf=False)
           speichere_daten(verkauft_datei, verkaufte_items, ist_verkauf=True)
           
-          # HIER NEU: Automatischer Refresh
           st.session_state.erfolgs_meldung = "Erfolgreich als verkauft verbucht!"
           st.rerun()
 
         if st.button("🗑️ Löschen (ohne Verkauf)", use_container_width=True):
           del aktive_items[k_idx]
           speichere_daten(aktiv_datei, aktive_items, ist_verkauf=False)
-          
-          # HIER NEU: Automatischer Refresh
           st.session_state.erfolgs_meldung = "Eintrag gelöscht!"
           st.rerun()
           
       tab_daten = []
       for idx, item in enumerate(aktive_items):
-        w = item.get_aktueller_wert(gold_g, silber_g)
-        gv = w - item.kaufpreis
-        tab_daten.append({
+        # Basis-Informationen (immer anzeigen)
+        reihen_daten = {
+            "Datum": item.datum,      # DATUM WIEDER HINZUGEFÜGT
             "Name": item.name,
             "Typ": item.typ,
-            "Gewicht": f"{item.gewicht_gramm:.1f}g".replace(".", ","),
-            "Kaufpreis": f"{item.kaufpreis:,.0f} €",
-            "Aktuell": f"{w:,.0f} €",
-            "G/V": f"{gv:+,.0f} €",
-        })
+            "Gewicht": f"{item.gewicht_gramm:.1f} g".replace(".", ","),
+            "Kaufpreis": f"{item.kaufpreis:,.0f} €".replace(".", ",")
+        }
+        
+        # Schätzwerte nur anfügen, wenn Protokoll-Modus aus ist
+        if not protokoll_modus:
+            w = item.get_aktueller_wert(gold_g, silber_g)
+            gv = w - item.kaufpreis
+            reihen_daten["Aktuell"] = f"{w:,.0f} €".replace(".", ",")
+            reihen_daten["G/V"] = f"{gv:+,.0f} €".replace(".", ",")
+            
+        tab_daten.append(reihen_daten)
+        
       st.dataframe(tab_daten, use_container_width=True, hide_index=True)
     else:
       st.info("Du hast noch keine Artikel. Gehe zum Tab '➕ Neu'.")
@@ -276,19 +303,22 @@ def main():
 
   # --- TAB 2: VERKAUFT ---
   with tab_verkauft:
-    realisierter_gesamt_gewinn = sum(i.get_realisierter_gewinn() for i in verkaufte_items)
     gesamter_erloes = sum(i.verkaufspreis for i in verkaufte_items)
-
-    vc1, vc2 = st.columns(2)
-    vc1.metric("Gesamterlöse", f"{gesamter_erloes:,.0f} €".replace(".", ","))
-    vc2.metric("Realisierter Gewinn", f"{realisierter_gesamt_gewinn:+,.0f} €".replace(".", ","))
+    
+    if not protokoll_modus:
+        realisierter_gesamt_gewinn = sum(i.get_realisierter_gewinn() for i in verkaufte_items)
+        vc1, vc2 = st.columns(2)
+        vc1.metric("Gesamterlöse", f"{gesamter_erloes:,.0f} €".replace(".", ","))
+        vc2.metric("Realisierter Gewinn", f"{realisierter_gesamt_gewinn:+,.0f} €".replace(".", ","))
+    else:
+        st.metric("Gesamterlöse durch Verkäufe", f"{gesamter_erloes:,.0f} €".replace(".", ","))
 
     if verkaufte_items:
       with st.expander("Verkauf aus Historie löschen"):
         v_loesch_idx = st.selectbox(
             "Welcher Eintrag?",
             options=range(len(verkaufte_items)),
-            format_func=lambda x: f"{verkaufte_items[x].name} (Gewinn: {verkaufte_items[x].get_realisierter_gewinn()}€)"
+            format_func=lambda x: f"{verkaufte_items[x].name} (Verkauf für: {verkaufte_items[x].verkaufspreis}€)"
         )
         if st.button("🗑️ Historie bereinigen", use_container_width=True):
           del verkaufte_items[v_loesch_idx]
@@ -298,14 +328,21 @@ def main():
 
       v_tab_daten = []
       for idx, item in enumerate(verkaufte_items):
-        rg = item.get_realisierter_gewinn()
-        v_tab_daten.append({
+        reihen_daten = {
+            "Kauf-Datum": item.kaufdatum,
+            "Verkaufs-Datum": item.verkauf_datum,
             "Name": item.name,
             "Typ": item.typ,
-            "Kauf": f"{item.kaufpreis:,.0f} €",
-            "Verkauf": f"{item.verkaufspreis:,.0f} €",
-            "Gewinn": f"{rg:+,.0f} €",
-        })
+            "Kauf": f"{item.kaufpreis:,.0f} €".replace(".", ","),
+            "Verkauf": f"{item.verkaufspreis:,.0f} €".replace(".", ",")
+        }
+        
+        if not protokoll_modus:
+            rg = item.get_realisierter_gewinn()
+            reihen_daten["Gewinn"] = f"{rg:+,.0f} €".replace(".", ",")
+            
+        v_tab_daten.append(reihen_daten)
+        
       st.dataframe(v_tab_daten, use_container_width=True, hide_index=True)
     else:
       st.info("Keine Verkäufe vorhanden.")
@@ -342,7 +379,6 @@ def main():
         )
         speichere_daten(aktiv_datei, aktive_items, ist_verkauf=False)
         
-        # HIER NEU: Wir speichern die Meldung und erzwingen einen Reload!
         st.session_state.erfolgs_meldung = f"{s_name} gespeichert! (Im Tab 'Aktiv' zu sehen)"
         st.rerun()
 
