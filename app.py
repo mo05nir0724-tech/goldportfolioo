@@ -196,8 +196,8 @@ def main():
   st.sidebar.divider()
   
   st.sidebar.write("📜 **Ansicht:**")
-  # Dieser Schalter steuert, ob Schätzwerte angezeigt werden
-  protokoll_modus = st.sidebar.toggle("Nur Protokoll-Modus (Werte ausblenden)", value=False)
+  # WICHTIG: key="proto_modus" sorgt dafür, dass Streamlit den Wert beim Formular-Speichern nicht vergisst!
+  protokoll_modus = st.sidebar.toggle("Nur Protokoll-Modus (Werte ausblenden)", value=False, key="proto_modus")
   
   st.sidebar.divider()
   
@@ -278,9 +278,9 @@ def main():
           
       tab_daten = []
       for idx, item in enumerate(aktive_items):
-        # Basis-Informationen (immer anzeigen)
+        # Basis-Informationen
         reihen_daten = {
-            "Datum": item.datum,      # DATUM WIEDER HINZUGEFÜGT
+            "Datum": item.datum,
             "Name": item.name,
             "Typ": item.typ,
             "Gewicht": f"{item.gewicht_gramm:.1f} g".replace(".", ","),
@@ -350,7 +350,12 @@ def main():
 
   # --- TAB 3: NEUER EINTRAG ---
   with tab_neu:
-    st.subheader("Was hast du gekauft?")
+    if protokoll_modus:
+        st.subheader("Neuen Bestand erfassen (Protokoll)")
+        st.info("💡 Da du im Protokoll-Modus bist, kannst du den Kaufpreis auch einfach auf 0,00 € stehen lassen, wenn er für das reine Inventar nicht wichtig ist.")
+    else:
+        st.subheader("Was hast du gekauft?")
+        
     with st.form("neuer_eintrag_hauptbereich"):
       s_name = st.text_input("Name", "Maple Leaf", placeholder="z.B. Krügerrand")
       s_typ = st.selectbox("Typ", ["GOLD", "SILBER", "MANUELL"])
@@ -361,7 +366,10 @@ def main():
       
       col_d1, col_d2 = st.columns(2)
       s_dat = col_d1.text_input("Kaufdatum", "12.09.2026")
-      s_kauf = col_d2.number_input("Kaufpreis (€)", min_value=0.0, value=200.0)
+      
+      # Wenn Protokoll-Modus an ist, setzen wir den Standard-Kaufpreis auf 0.0 statt 200.0
+      standard_preis = 0.0 if protokoll_modus else 200.0
+      s_kauf = col_d2.number_input("Kaufpreis (€)", min_value=0.0, value=standard_preis)
       
       s_manuell = 0.0
       if s_typ == "MANUELL":
