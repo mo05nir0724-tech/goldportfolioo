@@ -4,7 +4,7 @@ import requests
 import streamlit as st
 from supabase import create_client
 
-st.set_page_config(page_title="Edelmetallportfolio", page_icon="🪙", layout="wide")
+st.set_page_config(page_title="Edelstahlportfolio", page_icon="🪙", layout="wide")
 
 st.markdown("""
 <style>
@@ -110,7 +110,6 @@ def main():
                   st.session_state.user_email = eingabe_email
                   st.rerun()
               except Exception as e:
-                  # Falls die E-Mail noch nicht bestätigt wurde, wirft Supabase hier einen Fehler
                   if "Email not confirmed" in str(e):
                       st.error("Bitte bestätige zuerst deine E-Mail-Adresse über den Link in deinem Postfach!")
                   else:
@@ -133,8 +132,7 @@ def main():
               else:
                 try:
                   supabase.auth.sign_up({"email": neu_email, "password": neu_pw})
-                  # E-Mail wurde versendet, Nutzer wird NICHT eingeloggt
-                  st.success("✅ Fast geschafft! Wir haben dir einen Bestätigungslink gesendet. Bitte überprüfe dein E-Mail-Postfach (und den Spam-Ordner) und klicke auf den Link, bevor du dich einloggst.")
+                  st.success("✅ Fast geschafft! Wir haben dir einen Bestätigungslink gesendet. Bitte überprüfe dein E-Mail-Postfach.")
                 except Exception as e:
                   st.error(f"Fehler bei Registrierung: {str(e)}")
     return
@@ -196,8 +194,12 @@ def main():
 
         if st.button("💵 Als verkauft buchen", type="primary", use_container_width=True):
           with st.spinner("Buche Verkauf..."):
+              # Wir übergeben hier explizit die user_email, damit das RLS-System es direkt zuordnet
+              user_data = supabase.auth.get_user()
+              uid = user_data.user.id if user_data and user_data.user else None
+
               supabase.table("verkaeufe").insert({
-                  "name": item_zu_verkaufen.name, "typ": item_zu_verkaufen.typ,
+                  "user_id": uid, "username": user_email, "name": item_zu_verkaufen.name, "typ": item_zu_verkaufen.typ,
                   "gewicht_gramm": item_zu_verkaufen.gewicht_gramm, "kaufdatum": item_zu_verkaufen.datum,
                   "kaufpreis": item_zu_verkaufen.kaufpreis, "verkaufspreis": verkaufspreis_input, 
                   "verkauf_datum": verkauf_datum_input
@@ -278,11 +280,20 @@ def main():
       if st.form_submit_button("💾 Speichern & ins Portfolio aufnehmen", type="primary", use_container_width=True):
         with st.spinner("Speichere verschlüsselt in Datenbank..."):
             gewicht_in_g = s_gew * 31.1034768 if s_einheit == "oz" else (s_gew * 1000.0 if s_einheit == "kg" else s_gew)
-                
+            
+            # Wir holen die echte Auth-ID des eingeloggten Nutzers für den Insert
+            user_data = supabase.auth.get_user()
+            uid = user_data.user.id if user_data and user_data.user else None
+
             supabase.table("portfolio").insert({
-                "name": s_name, "typ": s_typ,
-                "gewicht_gramm": gewicht_in_g, "datum": s_dat,
-                "kaufpreis": s_kauf, "manueller_wert": s_manuell
+                "user_id": uid,
+                "username": user_email,
+                "name": s_name, 
+                "typ": s_typ,
+                "gewicht_gramm": gewicht_in_g, 
+                "datum": s_dat,
+                "kaufpreis": s_kauf, 
+                "manueller_wert": s_manuell
             }).execute()
             
             st.session_state.erfolgs_meldung = f"{s_name} gespeichert! (Im Tab 'Aktiv' zu sehen)"
