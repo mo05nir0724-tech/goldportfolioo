@@ -4,7 +4,7 @@ import requests
 import streamlit as st
 from supabase import create_client
 
-st.set_page_config(page_title="Edelstahlportfolio", page_icon="🪙", layout="wide")
+st.set_page_config(page_title="Edelmetallportfolio", page_icon="🪙", layout="wide")
 
 st.markdown("""
 <style>
