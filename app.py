@@ -35,10 +35,6 @@ def init_connection():
 
 supabase = init_connection()
 
-def lade_benutzer():
-    response = supabase.table("users").select("*").execute()
-    return {row["username"]: row["password"] for row in response.data}
-
 def speichere_benutzer(username, password):
     supabase.table("users").insert({"username": username, "password": password}).execute()
 # ==========================================
@@ -137,13 +133,17 @@ def main():
         submit_login = st.form_submit_button("Einloggen", use_container_width=True)
 
         if submit_login:
-          benutzer_daten = lade_benutzer()
-          if eingabe_user in benutzer_daten and benutzer_daten[eingabe_user] == eingabe_pw:
-            st.session_state.logged_in = True
-            st.session_state.username = eingabe_user
-            st.rerun()
-          else:
-            st.error("Falscher Benutzername oder Passwort!")
+          with st.spinner("Gleich geschafft..."):
+              # Zieht nur exakt diesen einen Nutzer aus der Datenbank (extrem schnell)
+              response = supabase.table("users").select("password").eq("username", eingabe_user).execute()
+              
+              # Prüfen, ob die Antwort Daten enthält und das Passwort übereinstimmt
+              if len(response.data) > 0 and response.data[0]["password"] == eingabe_pw:
+                st.session_state.logged_in = True
+                st.session_state.username = eingabe_user
+                st.rerun()
+              else:
+                st.error("Falscher Benutzername oder Passwort!")
             
     with tab_register:
       with st.form("register_form"):
@@ -153,25 +153,25 @@ def main():
         submit_register = st.form_submit_button("Konto erstellen", type="primary", use_container_width=True)
         
         if submit_register:
-          benutzer_daten = lade_benutzer()
-          
-          if not neu_user or not neu_pw:
-            st.error("Bitte fülle alle Felder aus.")
-          elif neu_user in benutzer_daten:
-            st.error("Diesen Benutzernamen gibt es leider schon. Wähle einen anderen!")
-          elif neu_pw != neu_pw_confirm:
-            st.error("Die Passwörter stimmen nicht überein.")
-          elif len(neu_user) < 3:
-            st.error("Der Benutzername muss mindestens 3 Zeichen lang sein.")
-          else:
-            speichere_benutzer(neu_user, neu_pw)
-            
-            # --- HIER IST DIE ÄNDERUNG: Automatischer Login nach Registrierung ---
-            st.session_state.logged_in = True
-            st.session_state.username = neu_user
-            st.session_state.erfolgs_meldung = "Konto erfolgreich erstellt und automatisch eingeloggt! Willkommen!"
-            st.rerun()
-            # ---------------------------------------------------------------------
+          with st.spinner("Prüfe Daten..."):
+              if not neu_user or not neu_pw:
+                st.error("Bitte fülle alle Felder aus.")
+              elif neu_pw != neu_pw_confirm:
+                st.error("Die Passwörter stimmen nicht überein.")
+              elif len(neu_user) < 3:
+                st.error("Der Benutzername muss mindestens 3 Zeichen lang sein.")
+              else:
+                # Schnellprüfung: Gibt es den Namen schon?
+                check_user = supabase.table("users").select("username").eq("username", neu_user).execute()
+                
+                if len(check_user.data) > 0:
+                  st.error("Diesen Benutzernamen gibt es leider schon. Wähle einen anderen!")
+                else:
+                  speichere_benutzer(neu_user, neu_pw)
+                  st.session_state.logged_in = True
+                  st.session_state.username = neu_user
+                  st.session_state.erfolgs_meldung = "Konto erfolgreich erstellt und automatisch eingeloggt! Willkommen!"
+                  st.rerun()
             
     return
   # --- ENDE LOGIN LOGIK ---
@@ -247,22 +247,24 @@ def main():
         item_zu_verkaufen = aktive_items[k_idx]
 
         if st.button("💵 Als verkauft buchen", type="primary", use_container_width=True):
-          supabase.table("verkaeufe").insert({
-              "username": username, "name": item_zu_verkaufen.name, "typ": item_zu_verkaufen.typ,
-              "gewicht_gramm": item_zu_verkaufen.gewicht_gramm, "kaufdatum": item_zu_verkaufen.datum,
-              "kaufpreis": item_zu_verkaufen.kaufpreis, "verkaufspreis": verkaufspreis_input, 
-              "verkauf_datum": verkauf_datum_input
-          }).execute()
-          
-          supabase.table("portfolio").delete().eq("id", item_zu_verkaufen.id).execute()
-          
-          st.session_state.erfolgs_meldung = "Erfolgreich als verkauft verbucht!"
-          st.rerun()
+          with st.spinner("Buche Verkauf..."):
+              supabase.table("verkaeufe").insert({
+                  "username": username, "name": item_zu_verkaufen.name, "typ": item_zu_verkaufen.typ,
+                  "gewicht_gramm": item_zu_verkaufen.gewicht_gramm, "kaufdatum": item_zu_verkaufen.datum,
+                  "kaufpreis": item_zu_verkaufen.kaufpreis, "verkaufspreis": verkaufspreis_input, 
+                  "verkauf_datum": verkauf_datum_input
+              }).execute()
+              
+              supabase.table("portfolio").delete().eq("id", item_zu_verkaufen.id).execute()
+              
+              st.session_state.erfolgs_meldung = "Erfolgreich als verkauft verbucht!"
+              st.rerun()
 
         if st.button("🗑️ Löschen (ohne Verkauf)", use_container_width=True):
-          supabase.table("portfolio").delete().eq("id", item_zu_verkaufen.id).execute()
-          st.session_state.erfolgs_meldung = "Eintrag gelöscht!"
-          st.rerun()
+          with st.spinner("Lösche Eintrag..."):
+              supabase.table("portfolio").delete().eq("id", item_zu_verkaufen.id).execute()
+              st.session_state.erfolgs_meldung = "Eintrag gelöscht!"
+              st.rerun()
           
       tab_daten = []
       for idx, item in enumerate(aktive_items):
@@ -304,10 +306,11 @@ def main():
             format_func=lambda x: f"{verkaufte_items[x].name} (Verkauf für: {verkaufte_items[x].verkaufspreis}€)"
         )
         if st.button("🗑️ Historie bereinigen", use_container_width=True):
-          del_item = verkaufte_items[v_loesch_idx]
-          supabase.table("verkaeufe").delete().eq("id", del_item.id).execute()
-          st.session_state.erfolgs_meldung = "Eintrag aus Historie entfernt!"
-          st.rerun()
+          with st.spinner("Bereinige..."):
+              del_item = verkaufte_items[v_loesch_idx]
+              supabase.table("verkaeufe").delete().eq("id", del_item.id).execute()
+              st.session_state.erfolgs_meldung = "Eintrag aus Historie entfernt!"
+              st.rerun()
 
       v_tab_daten = []
       for idx, item in enumerate(verkaufte_items):
@@ -355,24 +358,25 @@ def main():
         s_manuell = st.number_input("Manueller Wert (€)", min_value=0.0)
 
       if st.form_submit_button("💾 Speichern & ins Portfolio aufnehmen", type="primary", use_container_width=True):
-        gewicht_in_g = s_gew
-        if s_einheit == "oz":
-            gewicht_in_g = s_gew * 31.1034768
-        elif s_einheit == "kg":
-            gewicht_in_g = s_gew * 1000.0
+        with st.spinner("Speichere in Datenbank..."):
+            gewicht_in_g = s_gew
+            if s_einheit == "oz":
+                gewicht_in_g = s_gew * 31.1034768
+            elif s_einheit == "kg":
+                gewicht_in_g = s_gew * 1000.0
+                
+            supabase.table("portfolio").insert({
+                "username": username,
+                "name": s_name,
+                "typ": s_typ,
+                "gewicht_gramm": gewicht_in_g,
+                "datum": s_dat,
+                "kaufpreis": s_kauf,
+                "manueller_wert": s_manuell
+            }).execute()
             
-        supabase.table("portfolio").insert({
-            "username": username,
-            "name": s_name,
-            "typ": s_typ,
-            "gewicht_gramm": gewicht_in_g,
-            "datum": s_dat,
-            "kaufpreis": s_kauf,
-            "manueller_wert": s_manuell
-        }).execute()
-        
-        st.session_state.erfolgs_meldung = f"{s_name} gespeichert! (Im Tab 'Aktiv' zu sehen)"
-        st.rerun()
+            st.session_state.erfolgs_meldung = f"{s_name} gespeichert! (Im Tab 'Aktiv' zu sehen)"
+            st.rerun()
 
 if __name__ == "__main__":
   main()
